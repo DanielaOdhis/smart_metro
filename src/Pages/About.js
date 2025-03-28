@@ -201,7 +201,7 @@ const About = () => {
         <div className="rectangle-6-1084 pos-abs"></div>
 
         <div className="track-your-bus--1093 pos-abs">
-          <span className="track-your-bus--1093-0"><Link to="/" className="nav-link">{`Track Buses Now`}</Link></span>
+          <span className="track-your-bus--1093-0"><Link to="/BusTracking" className="nav-link">{`Track Buses Now`}</Link></span>
         </div>
         {/* Frame 291 */}
         <section className="frame-29-1085 pos-abs">
