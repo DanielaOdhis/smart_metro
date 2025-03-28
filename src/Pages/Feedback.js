@@ -20,11 +20,10 @@ const Feedback = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post("http://127.0.0.1:8000/submit-feedback/", feedback)
-
+      await axios.post("http://localhost:5000/feedback", feedback);
       setSubmitted(true);
     } catch (error) {
-      console.error("Error submitting feedback", error);
+      console.error("Error submitting feedback:", error);
     }
   };
 

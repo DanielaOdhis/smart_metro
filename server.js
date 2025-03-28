@@ -11,6 +11,7 @@ const bodyParser = require("body-parser");
 
 dotenv.config();
 
+// Initialize Express App
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, { cors: { origin: "*" } });
@@ -18,6 +19,7 @@ const io = socketIo(server, { cors: { origin: "*" } });
 const PORT = process.env.PORT || 5000;
 const ORS_API_KEY = process.env.ORS_API_KEY; // OpenRouteService API Key
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());
@@ -175,7 +177,7 @@ io.on("connection", (socket) => {
 app.post("/register", async (req, res) => {
     const { name, email, password, role } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
-  
+
     const sql = "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)";
     db.query(sql, [name, email, hashedPassword, role], (err, result) => {
       if (err) {
@@ -184,32 +186,49 @@ app.post("/register", async (req, res) => {
       res.status(201).json({ message: "User registered successfully" });
     });
   });
-  
+
   // Login User
   app.post("/login", (req, res) => {
     const { email, password } = req.body;
-  
     const sql = "SELECT * FROM users WHERE email = ?";
     db.query(sql, [email], async (err, results) => {
       if (err) return res.status(500).json({ message: "Error logging in" });
-  
+
       if (results.length === 0) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
-  
+
       const user = results[0];
       const isMatch = await bcrypt.compare(password, user.password);
-  
+
       if (!isMatch) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
-  
+
       const token = jwt.sign({ id: user.id, role: user.role }, "secretkey", { expiresIn: "1h" });
-  
+
       res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
     });
   });
-  
+
+  // Feedback Submission Endpoint
+app.post("/feedback", (req, res) => {
+    const { category, message, contact } = req.body;
+    
+    if (!category || !message) {
+        return res.status(400).json({ error: "Category and message are required" });
+    }
+
+    const sql = "INSERT INTO feedback (category, message, contact) VALUES (?, ?, ?)";
+    db.query(sql, [category, message, contact], (err, result) => {
+        if (err) {
+            console.error("❌ Error inserting feedback:", err);
+            return res.status(500).json({ error: "Internal Server Error" });
+        }
+        res.status(201).json({ message: "Feedback submitted successfully" });
+    });
+});
+
 // Start the server
 server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
