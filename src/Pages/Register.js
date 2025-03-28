@@ -1,43 +1,67 @@
-import React, { useState } from 'react';
-import './LoginRegister.css'; // Ensure the CSS file is imported
+import React, { useState } from "react";
+import axios from "axios";
+import { Link, useNavigate } from "react-router-dom";
+import "./LoginRegister.css";
 
-const LoginRegister = () => {
-  const [isLogin, setIsLogin] = useState(true);
+const Register = () => {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const navigate = useNavigate(); // Initialize navigation
 
-  const toggleForm = () => {
-    setIsLogin(!isLogin);
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await axios.post("http://localhost:5000/register", {
+        name,
+        email,
+        password,
+        role: "passenger",
+      });
+      console.log("Registration successful:", response.data);
+      navigate("/"); // Redirect to homepage
+    } catch (error) {
+      console.error("Registration failed:", error.response?.data || error.message);
+    }
   };
 
   return (
     <div className="login-register-container">
       <div className="image-container"></div>
       <div className="form-container">
-        {isLogin ? (
-          <form className="login-form">
-            <h2>Login</h2>
-            <input type="email" placeholder="Email" required />
-            <input type="password" placeholder="Password" required />
-            <button type="submit">Login</button>
-            <p>
-              Don't have an account? <span onClick={toggleForm}>Register here</span>
-            </p>
-          </form>
-        ) : (
-          <form className="register-form">
+        <div className="form-box">
+          <form className="register-form" onSubmit={handleRegister}>
             <h2>Register</h2>
-            <input type="text" placeholder="First Name" required />
-            <input type="text" placeholder="Last Name" required />
-            <input type="email" placeholder="Email" required />
-            <input type="password" placeholder="Password" required />
+            <input
+              type="text"
+              placeholder="Full Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
             <button type="submit">Register</button>
             <p>
-              Already have an account? <span onClick={toggleForm}>Login here</span>
+              Already have an account? <Link to="/login">Login here</Link>
             </p>
           </form>
-        )}
+        </div>
       </div>
     </div>
   );
 };
 
-export default LoginRegister;
+export default Register;

@@ -35,14 +35,11 @@ const navItems = [
 const Home = () => {
     const [isOpen, setIsOpen] = useState(false)
       const navigate = useNavigate(); // React Router navigation
-
-  const handleNavigation = (href) => {
-    if (href.startsWith("/")) {
-      navigate(href); // Navigate to a new page
-    } else {
-      window.location.href = href; // For in-page navigation
-    }
-  };
+        const handleNavigation = (path) => {
+            navigate(path); // Navigate to the specified path
+            setIsOpen(false); // Close the mobile menu
+        };
+        
   return (
     <div className="min-h-screen bg-white">
     <header

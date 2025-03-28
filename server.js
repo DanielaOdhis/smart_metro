@@ -5,6 +5,9 @@ const dotenv = require('dotenv');
 const http = require('http');
 const socketIo = require('socket.io');
 const axios = require('axios');
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const bodyParser = require("body-parser");
 
 dotenv.config();
 
@@ -17,6 +20,7 @@ const ORS_API_KEY = process.env.ORS_API_KEY; // OpenRouteService API Key
 
 app.use(cors());
 app.use(express.json());
+app.use(bodyParser.json());
 
 // MySQL Database Connection
 const db = mysql.createConnection({
@@ -167,6 +171,45 @@ io.on("connection", (socket) => {
     });
 });
 
+// Register User
+app.post("/register", async (req, res) => {
+    const { name, email, password, role } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+  
+    const sql = "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)";
+    db.query(sql, [name, email, hashedPassword, role], (err, result) => {
+      if (err) {
+        return res.status(500).json({ message: "Error registering user" });
+      }
+      res.status(201).json({ message: "User registered successfully" });
+    });
+  });
+  
+  // Login User
+  app.post("/login", (req, res) => {
+    const { email, password } = req.body;
+  
+    const sql = "SELECT * FROM users WHERE email = ?";
+    db.query(sql, [email], async (err, results) => {
+      if (err) return res.status(500).json({ message: "Error logging in" });
+  
+      if (results.length === 0) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+  
+      const user = results[0];
+      const isMatch = await bcrypt.compare(password, user.password);
+  
+      if (!isMatch) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+  
+      const token = jwt.sign({ id: user.id, role: user.role }, "secretkey", { expiresIn: "1h" });
+  
+      res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    });
+  });
+  
 // Start the server
 server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
