@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
+import { FaEye, FaEyeSlash } from "react-icons/fa"; // Import eye icons
 import "./LoginRegister.css";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const navigate = useNavigate(); // Initialize navigation
+  const [showPassword, setShowPassword] = useState(false); // Toggle password visibility
+  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -29,6 +31,7 @@ const Login = () => {
         <div className="form-box">
           <form className="login-form" onSubmit={handleLogin}>
             <h2>Login</h2>
+
             <input
               type="email"
               placeholder="Email"
@@ -36,13 +39,20 @@ const Login = () => {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+
+            <div className="password-container">
+              <input
+                type={showPassword ? "text" : "password"} // Toggle between text & password
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <span className="toggle-password" onClick={() => setShowPassword(!showPassword)}>
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </span>
+            </div>
+
             <button type="submit">Login</button>
             <p>
               Don't have an account? <Link to="/register">Register here</Link>
