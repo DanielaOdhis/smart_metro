@@ -39,7 +39,7 @@ const Home = () => {
             navigate(path); // Navigate to the specified path
             setIsOpen(false); // Close the mobile menu
         };
-        
+
   return (
     <div className="min-h-screen bg-white">
     <header
@@ -207,8 +207,8 @@ const Home = () => {
 
         {/* CTA Buttons */}
         <div style={{ display: "flex", justifyContent: "center", gap: "15px" }}>
-          <button
-            style={{
+
+          <button  style={{
               background: "#ff7f00",
               color: "white",
               padding: "12px 20px",
@@ -216,10 +216,8 @@ const Home = () => {
               borderRadius: "5px",
               cursor: "pointer",
               fontSize: "16px",
-            }}
-          >
-            Track Your Bus Now
-          </button>
+            }} onClick={() => navigate("/BusTracking")}>Track Your Bus Now</button>
+
           <button
             style={{
               background: "transparent",
