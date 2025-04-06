@@ -98,6 +98,39 @@ router.post('/forgot-password', (req, res) => {
 });
 
 module.exports = router;
+// Middleware to check if the user is authenticated
+const authenticateToken = (req, res, next) => {
+    const token = req.header('Authorization')?.split(' ')[1]; // Get token from the Authorization header
+    if (!token) {
+      return res.status(401).json({ message: 'Access denied' });
+    }
+  
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(403).json({ message: 'Invalid token' });
+      }
+      req.user = decoded; // Add decoded user info to the request object
+      next();
+    });
+  };
+  
+  // GET /profile - Fetch user profile data
+  router.get('/profile', authenticateToken, (req, res) => {
+    const userId = req.user.id; // Get the user ID from the JWT token
+  
+    const query = 'SELECT name, email, profile_picture FROM users WHERE id = ?';
+    db.execute(query, [userId], (err, results) => {
+      if (err) {
+        return res.status(500).json({ message: 'Database error' });
+      }
+      if (results.length === 0) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+  
+      res.json(results[0]); // Return the user's profile data
+    });
+  });
+  
 // Define routes
 const routes = {
     "Juja-Nairobi": { 

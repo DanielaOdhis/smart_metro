@@ -8,6 +8,7 @@ const navItems = [
     { label: "Route Info", href: "#route" },
     { label: "About Us", href: "/about" },
     { label: "Feedback", href: "/feedback" },
+    {label: "Profile", href: "/profile"},
   ];
   const features = [
     {
@@ -35,10 +36,10 @@ const navItems = [
 const Home = () => {
     const [isOpen, setIsOpen] = useState(false)
       const navigate = useNavigate(); // React Router navigation
-        const handleNavigation = (path) => {
-            navigate(path); // Navigate to the specified path
-            setIsOpen(false); // Close the mobile menu
-        };
+        // const handleNavigation = (path) => {
+        //     navigate(path); // Navigate to the specified path
+        //     setIsOpen(false); // Close the mobile menu
+        // };
 
   return (
     <div className="min-h-screen bg-white">
@@ -105,6 +106,7 @@ const Home = () => {
             
             onMouseOver={(e) => (e.target.style.background = "#e66f00")}
             onMouseOut={(e) => (e.target.style.background = "#ff7f00")}
+            onClick={() => navigate("/profile")}
           >
             PROFILE
           </button>
