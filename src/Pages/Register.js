@@ -23,7 +23,7 @@ const Register = () => {
       });
       console.log("Registration successful:", response.data);
       setSuccessMessage("Registration successful! Please log in.");
-      
+
       setTimeout(() => navigate("/login"), 2000);
     } catch (error) {
       console.error("Registration failed:", error.response?.data || error.message);
@@ -38,7 +38,7 @@ const Register = () => {
           <form className="register-form" onSubmit={handleRegister}>
             <h2>Register</h2>
             {successMessage && <p className="success-message">{successMessage}</p>}
-            
+
             <input
               type="text"
               placeholder="Full Name"
@@ -46,7 +46,7 @@ const Register = () => {
               onChange={(e) => setName(e.target.value)}
               required
             />
-            
+
             <input
               type="email"
               placeholder="Email"

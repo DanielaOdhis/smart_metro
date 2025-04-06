@@ -1,13 +1,14 @@
-const express = require('express');
-const mysql = require('mysql2');
-const cors = require('cors');
-const dotenv = require('dotenv');
-const http = require('http');
-const socketIo = require('socket.io');
-const axios = require('axios');
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const bodyParser = require("body-parser");
+const express = require('express'); // Express framework for handling HTTP requests and routing
+const mysql = require('mysql2'); // MySQL database driver for Node.js
+const cors = require('cors'); // Middleware to enable Cross-Origin Resource Sharing (CORS)
+const dotenv = require('dotenv'); // Loads environment variables from a .env file
+const http = require('http'); // Built-in Node.js module to create an HTTP server
+const socketIo = require('socket.io'); // Library for real-time, bidirectional communication via WebSockets
+const axios = require('axios'); // HTTP client for making API requests
+const bcrypt = require("bcryptjs"); // Library for hashing passwords securely
+const jwt = require("jsonwebtoken"); // Library for generating and verifying JSON Web Tokens (JWTs)
+const bodyParser = require("body-parser"); // Middleware for parsing incoming JSON request bodies
+const nodemailer = require('nodemailer');
 
 dotenv.config();
 
@@ -17,7 +18,7 @@ const server = http.createServer(app);
 const io = socketIo(server, { cors: { origin: "*" } });
 
 const PORT = process.env.PORT || 5000;
-const ORS_API_KEY = process.env.ORS_API_KEY; // OpenRouteService API Key
+const ORS_API_KEY = process.env.ORS_API_KEY;
 
 // Middleware
 app.use(cors());
@@ -40,15 +41,77 @@ db.connect(err => {
     console.log('✅ Connected to MySQL Database');
 });
 
+const router = express.Router();
+router.post('/forgot-password', (req, res) => {
+    const { email } = req.body;
+
+    // Step 1: Check if the email exists in the database
+    db.query('SELECT * FROM users WHERE email = ?', [email], (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: "Server error. Please try again." });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: "No account found with that email." });
+        }
+
+        // Step 2: Generate a unique token and expiration time (1 hour)
+        const resetToken = crypto.randomBytes(20).toString('hex');
+        const resetExpires = new Date(Date.now() + 3600000); // 1 hour
+
+        // Step 3: Update the user's record with the reset token and expiry
+        db.query(
+            'UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE email = ?',
+            [resetToken, resetExpires, email],
+            (err, result) => {
+                if (err) {
+                    return res.status(500).json({ message: "Error updating token." });
+                }
+
+                // Step 4: Send the password reset link to the user via email
+                const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
+                const transporter = nodemailer.createTransport({
+                    service: 'gmail',
+                    auth: {
+                        user: process.env.EMAIL_USER,
+                        pass: process.env.EMAIL_PASS
+                    }
+                });
+
+                const mailOptions = {
+                    to: email,
+                    from: 'no-reply@smartmetro.com',
+                    subject: 'Password Reset Request',
+                    text: `To reset your password, click the following link: ${resetUrl}`
+                };
+
+                transporter.sendMail(mailOptions, (err) => {
+                    if (err) {
+                        return res.status(500).json({ message: "Error sending email." });
+                    }
+
+                    res.status(200).json({ message: "Password reset link sent to your email." });
+                });
+            }
+        );
+    });
+});
+
+module.exports = router;
 // Define routes
 const routes = {
-    "Juja-Nairobi": { start: { lat: -1.1278, lng: 36.9707 }, end: { lat: -1.286389, lng: 36.817223 } },
-    "Nairobi-Juja": { start: { lat: -1.286389, lng: 36.817223 }, end: { lat: -1.1278, lng: 36.9707 } }
+    "Juja-Nairobi": { 
+        start: { lat: -1.1016, lng: 37.0144 }, 
+        end: { lat: -1.286389, lng: 36.817223 } 
+    },
+    "Nairobi-Juja": { 
+        start: { lat: -1.286389, lng: 36.817223 }, 
+        end: { lat: -1.1016, lng: 37.0144 } 
+    }
 };
 
-// Store bus routes & positions
-const busRoutes = {};
-const busPositions = {};
+// Store bus data
+const busData = {};
 
 // Fetch route from OpenRouteService
 const getRoute = async (start, end) => {
@@ -59,71 +122,127 @@ const getRoute = async (start, end) => {
             { headers: { Authorization: ORS_API_KEY } }
         );
 
-        if (response.data.features.length > 0) {
+        if (response.data?.features?.length > 0) {
             return response.data.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
         }
+        console.error("❌ ORS API returned no route data");
+        return null;
     } catch (error) {
-        console.error("❌ Error fetching route:", error);
+        console.error("❌ Error fetching route:", error.response?.data || error.message);
+        return null;
     }
-    return [];
 };
 
-// Function to update bus locations step-by-step
+// Initialize bus data structure
+const initializeBus = (busId) => {
+    if (!busData[busId]) {
+        busData[busId] = {
+            route: null,
+            position: 0,
+            smoothingBuffer: [],
+            maxBufferSize: 5,
+            lastUpdate: Date.now()
+        };
+    }
+};
+
+// Calculate average position from buffer
+const getAveragePosition = (positions) => {
+    if (positions.length === 0) return null;
+    
+    const sum = positions.reduce((acc, pos) => ({
+        lat: acc.lat + pos.lat,
+        lng: acc.lng + pos.lng
+    }), { lat: 0, lng: 0 });
+
+    return {
+        lat: sum.lat / positions.length,
+        lng: sum.lng / positions.length
+    };
+};
+
+// Update bus locations with smooth movement
 const updateBusLocations = () => {
-    db.query("SELECT id, bus_number, step_index FROM buses WHERE status = 'active'", async (err, buses) => {
+    db.query("SELECT id, bus_number FROM buses WHERE status = 'active'", async (err, buses) => {
         if (err) {
             console.error("❌ Error fetching buses:", err);
             return;
         }
 
         const updatedBuses = [];
+        const now = Date.now();
 
         for (const bus of buses) {
             const busId = bus.id;
-            let routeKey = bus.bus_number.includes("Juja") ? "Juja-Nairobi" : "Nairobi-Juja";
+            initializeBus(busId);
+            const busInfo = busData[busId];
+            
+            // Determine route direction
+            const routeKey = bus.bus_number.includes("Juja") ? "Juja-Nairobi" : "Nairobi-Juja";
             const { start, end } = routes[routeKey];
 
-            if (!busRoutes[busId]) {
-                busRoutes[busId] = await getRoute(start, end);
-                busPositions[busId] = bus.step_index || 0;
+            // Fetch route if not available
+            if (!busInfo.route) {
+                busInfo.route = await getRoute(start, end);
+                if (!busInfo.route) continue;
+                busInfo.position = 0;
+                console.log(`✅ Fetched route for ${bus.bus_number}`);
             }
 
-            const route = busRoutes[busId];
+            // Calculate movement based on time delta for consistent speed
+            const deltaTime = now - busInfo.lastUpdate;
+            busInfo.lastUpdate = now;
+            
+            // Adjust this value to control bus speed (higher = faster)
+            const movementFactor = 0.00002 * deltaTime;
+            
+            // Update position
+            busInfo.position = (busInfo.position + movementFactor) % busInfo.route.length;
+            
+            // Get current and next points
+            const currentIdx = Math.floor(busInfo.position);
+            const nextIdx = (currentIdx + 1) % busInfo.route.length;
+            const progress = busInfo.position % 1;
+            
+            // Interpolate position
+            const currentPoint = busInfo.route[currentIdx];
+            const nextPoint = busInfo.route[nextIdx];
+            
+            const smoothLat = currentPoint.lat + progress * (nextPoint.lat - currentPoint.lat);
+            const smoothLng = currentPoint.lng + progress * (nextPoint.lng - currentPoint.lng);
+            
+            // Add to smoothing buffer
+            busInfo.smoothingBuffer.push({
+                lat: smoothLat,
+                lng: smoothLng,
+                timestamp: now
+            });
+            
+            // Remove old positions from buffer
+            busInfo.smoothingBuffer = busInfo.smoothingBuffer
+                .filter(pos => now - pos.timestamp < 1000)
+                .slice(-busInfo.maxBufferSize);
+            
+            // Get smoothed position
+            const avgPos = getAveragePosition(busInfo.smoothingBuffer);
+            if (!avgPos) continue;
+            
+            // Update database
+            db.query(
+                "UPDATE buses SET current_lat = ?, current_lng = ? WHERE id = ?",
+                [avgPos.lat, avgPos.lng, busId],
+                (err) => {
+                    if (err) console.error(`❌ Error updating bus ${busId}:`, err);
+                }
+            );
 
-            if (route.length > 0 && busPositions[busId] < route.length - 1) {
-                busPositions[busId]++;
-                const nextStop = route[busPositions[busId]];
-
-                db.query(
-                    "UPDATE buses SET current_lat = ?, current_lng = ?, step_index = ? WHERE id = ?",
-                    [nextStop.lat, nextStop.lng, busPositions[busId], busId]
-                );
-
-                updatedBuses.push({
-                    id: busId,
-                    bus_number: bus.bus_number,
-                    current_lat: nextStop.lat,
-                    current_lng: nextStop.lng,
-                    status: "active",
-                });
-
-            } else {
-                db.query(
-                    "UPDATE buses SET current_lat = ?, current_lng = ?, step_index = 0 WHERE id = ?",
-                    [start.lat, start.lng, busId]
-                );
-
-                busRoutes[busId] = await getRoute(start, end);
-                busPositions[busId] = 0;
-
-                updatedBuses.push({
-                    id: busId,
-                    bus_number: bus.bus_number,
-                    current_lat: start.lat,
-                    current_lng: start.lng,
-                    status: "active",
-                });
-            }
+            updatedBuses.push({
+                id: busId,
+                bus_number: bus.bus_number,
+                current_lat: avgPos.lat,
+                current_lng: avgPos.lng,
+                status: "active"
+            });
         }
 
         if (updatedBuses.length > 0) {
@@ -132,8 +251,8 @@ const updateBusLocations = () => {
     });
 };
 
-// Move bus step-by-step every 5 seconds
-setInterval(updateBusLocations, 5000);
+// Update buses every 100ms for smooth movement
+setInterval(updateBusLocations, 100);
 
 // API Endpoint to fetch all active buses
 app.get('/api/buses', (req, res) => {

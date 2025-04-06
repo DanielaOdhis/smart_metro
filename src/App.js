@@ -6,6 +6,7 @@ import ErrorPage from './Pages/ErrorPage'; // Import the Error Page component
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import BusTracking from "./Pages/BusTracking";
 import About from "./Pages/About";
+import ForgotPassword from "./Pages/ForgotPassword";
 import Home from "./Pages/Home"
 
 import "./App.css"; // Optional: Add global styling if needed
@@ -22,6 +23,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/BusTracking" element={<BusTracking/>} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="*" element={<ErrorPage />} />
 
       </Routes>
