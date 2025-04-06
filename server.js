@@ -146,8 +146,19 @@ const routes = {
 // Store bus data
 const busData = {};
 
-// Fetch route from OpenRouteService
+// Cache object
+const routeCache = {};
+
+// Fetch route from OpenRouteService with caching
 const getRoute = async (start, end) => {
+    const cacheKey = `${start.lat},${start.lng},${end.lat},${end.lng}`;
+    
+    // Check if the route is already cached
+    if (routeCache[cacheKey]) {
+        console.log("✅ Using cached route");
+        return routeCache[cacheKey];
+    }
+
     try {
         const response = await axios.post(
             "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
@@ -156,7 +167,10 @@ const getRoute = async (start, end) => {
         );
 
         if (response.data?.features?.length > 0) {
-            return response.data.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+            const route = response.data.features[0].geometry.coordinates.map(([lng, lat]) => ({ lat, lng }));
+            // Cache the route
+            routeCache[cacheKey] = route;
+            return route;
         }
         console.error("❌ ORS API returned no route data");
         return null;
@@ -165,6 +179,7 @@ const getRoute = async (start, end) => {
         return null;
     }
 };
+
 
 // Initialize bus data structure
 const initializeBus = (busId) => {
@@ -194,8 +209,8 @@ const getAveragePosition = (positions) => {
     };
 };
 
-// Update bus locations with smooth movement
-const updateBusLocations = () => {
+
+const updateBusLocations = async () => {
     db.query("SELECT id, bus_number FROM buses WHERE status = 'active'", async (err, buses) => {
         if (err) {
             console.error("❌ Error fetching buses:", err);
@@ -209,7 +224,7 @@ const updateBusLocations = () => {
             const busId = bus.id;
             initializeBus(busId);
             const busInfo = busData[busId];
-            
+
             // Determine route direction
             const routeKey = bus.bus_number.includes("Juja") ? "Juja-Nairobi" : "Nairobi-Juja";
             const { start, end } = routes[routeKey];
@@ -217,7 +232,12 @@ const updateBusLocations = () => {
             // Fetch route if not available
             if (!busInfo.route) {
                 busInfo.route = await getRoute(start, end);
-                if (!busInfo.route) continue;
+                
+                // Check if route is valid and contains enough points
+                if (!busInfo.route || busInfo.route.length < 2) {
+                    console.error(`❌ Route for ${bus.bus_number} is invalid or empty`);
+                    continue;
+                }
                 busInfo.position = 0;
                 console.log(`✅ Fetched route for ${bus.bus_number}`);
             }
@@ -225,41 +245,46 @@ const updateBusLocations = () => {
             // Calculate movement based on time delta for consistent speed
             const deltaTime = now - busInfo.lastUpdate;
             busInfo.lastUpdate = now;
-            
+
             // Adjust this value to control bus speed (higher = faster)
             const movementFactor = 0.00002 * deltaTime;
-            
+
             // Update position
             busInfo.position = (busInfo.position + movementFactor) % busInfo.route.length;
-            
+
             // Get current and next points
             const currentIdx = Math.floor(busInfo.position);
             const nextIdx = (currentIdx + 1) % busInfo.route.length;
             const progress = busInfo.position % 1;
-            
-            // Interpolate position
+
+            // Check if route points are valid before interpolating
             const currentPoint = busInfo.route[currentIdx];
             const nextPoint = busInfo.route[nextIdx];
             
+            if (!currentPoint || !nextPoint) {
+                console.error(`❌ Invalid route points: currentIdx=${currentIdx}, nextIdx=${nextIdx}`);
+                continue;
+            }
+
             const smoothLat = currentPoint.lat + progress * (nextPoint.lat - currentPoint.lat);
             const smoothLng = currentPoint.lng + progress * (nextPoint.lng - currentPoint.lng);
-            
+
             // Add to smoothing buffer
             busInfo.smoothingBuffer.push({
                 lat: smoothLat,
                 lng: smoothLng,
                 timestamp: now
             });
-            
+
             // Remove old positions from buffer
             busInfo.smoothingBuffer = busInfo.smoothingBuffer
                 .filter(pos => now - pos.timestamp < 1000)
                 .slice(-busInfo.maxBufferSize);
-            
+
             // Get smoothed position
             const avgPos = getAveragePosition(busInfo.smoothingBuffer);
             if (!avgPos) continue;
-            
+
             // Update database
             db.query(
                 "UPDATE buses SET current_lat = ?, current_lng = ? WHERE id = ?",
@@ -283,6 +308,7 @@ const updateBusLocations = () => {
         }
     });
 };
+
 
 // Update buses every 100ms for smooth movement
 setInterval(updateBusLocations, 100);
